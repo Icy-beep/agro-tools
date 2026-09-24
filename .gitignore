@@ -1,0 +1,118 @@
+# =========================
+# Python
+# =========================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Compiled extensions
+*.so
+*.pyd
+
+
+# =========================
+# Virtual environments
+# =========================
+
+.venv/
+venv/
+env/
+ENV/
+
+
+# =========================
+# Build / packaging
+# =========================
+
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+
+
+# =========================
+# Testing / coverage
+# =========================
+
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+
+# =========================
+# Type checkers / linters
+# =========================
+
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+
+# =========================
+# VS Code
+# =========================
+
+.vscode/
+
+# Если позже захочешь хранить общие настройки VS Code
+# в Git, можно убрать строку .vscode/ выше.
+
+
+# =========================
+# PyCharm / IntelliJ
+# =========================
+
+.idea/
+*.iml
+
+
+# =========================
+# OS files
+# =========================
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+
+
+# =========================
+# Environment / secrets
+# =========================
+
+.env
+.env.*
+!.env.example
+
+
+# =========================
+# Logs / temporary files
+# =========================
+
+*.log
+*.tmp
+*.temp
+~$*
+
+
+# =========================
+# Agro Tools
+# =========================
+
+# Локальные данные приложения
+data/
+
+# Локальная база данных
+*.db
+*.sqlite
+*.sqlite3
+
+# Пользовательские фото/вложения
+uploads/
