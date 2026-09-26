@@ -1,5 +1,6 @@
 import math
 from dataclasses import dataclass
+from enum import Enum
 
 
 def calculate_product_amount(
@@ -103,9 +104,21 @@ def calculate_last_tank(
 
     return remaining_area, solution_amount, product_amount
 
+
 # ============================================================
 # Функции баковой смеси
 # ============================================================
+
+
+class SprayUnit(Enum):
+    L_PER_HA = ("л/га", "л")
+    ML_PER_HA = ("мл/га", "мл")
+    KG_PER_HA = ("кг/га", "кг")
+    G_PER_HA = ("г/га", "г")
+
+    def __init__(self, rate_unit: str, amount_unit: str):
+        self.rate_unit = rate_unit
+        self.amount_unit = amount_unit
 
 
 @dataclass
@@ -114,18 +127,7 @@ class SprayComponent:
 
     name: str
     rate: float
-    unit: str
-
-    def amount_unit(self) -> str:
-        """Единица измерения расчитанного количества компонента."""
-        units = {
-            "л/га": "л",
-            "мл/га": "мл",
-            "кг/га": "кг",
-            "г/га": "г",
-        }
-
-        return units[self.unit]
+    unit: SprayUnit
 
 
 def calculate_component_amount(
@@ -285,8 +287,55 @@ def calculate_tank_mix_for_last_tank(
     )
 
 
+# ============================================================
+# КАЛИБРОВКА ОПРЫСКИВАТЕЛЯ
+# ============================================================
 
-'''
+
+def calculate_field_capacity(
+    speed_kmh: float,
+    boom_width_m: float,
+) -> float:
+    """
+    Рассчитать теоретическую производительность опрыскивателя, га/ч.
+
+    speed_kmh — рабочая скорость, км/ч.
+    boom_width_m — ширина захвата штанги, м.
+    """
+    return speed_kmh * boom_width_m / 10
+
+
+def calculate_required_nozzle_flow(
+    application_rate_l_ha: float,
+    speed_kmh: float,
+    nozzle_spacing_cm: float,
+) -> float:
+    """
+    Рассчитать требуемый расход одной форсунки, л/мин.
+
+    application_rate_l_ha — требуемая норма рабочего раствора, л/га.
+    speed_kmh — рабочая скорость, км/ч.
+    nozzle_spacing_cm — расстояние между форсунками, см.
+    """
+    return application_rate_l_ha * speed_kmh * nozzle_spacing_cm / 60_000
+
+
+def calculate_application_rate(
+    nozzle_flow_l_min: float,
+    speed_kmh: float,
+    nozzle_spacing_cm: float,
+) -> float:
+    """
+    Рассчитать фактическую норму рабочего раствора, л/га.
+
+    nozzle_flow_l_min — фактический расход одной форсунки, л/мин.
+    speed_kmh — рабочая скорость, км/ч.
+    nozzle_spacing_cm — расстояние между форсунками, см.
+    """
+    return 60_000 * nozzle_flow_l_min / (speed_kmh * nozzle_spacing_cm)
+
+
+"""
 Функции модуля spraying.py:
 
 ОБРАБОТКА ПОЛЯ
@@ -311,4 +360,4 @@ def calculate_tank_mix_for_last_tank(
 ├── производительность, га/ч <----------+
 ├── требуемый расход одной форсунки <---+
 └── фактическая норма рабочего раствора<+
-'''
+"""
