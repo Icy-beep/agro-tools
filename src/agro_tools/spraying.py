@@ -1,4 +1,5 @@
 import math
+from dataclasses import dataclass
 
 
 def calculate_product_amount(
@@ -102,6 +103,29 @@ def calculate_last_tank(
 
     return remaining_area, solution_amount, product_amount
 
+# ============================================================
+# Функции баковой смеси
+# ============================================================
+
+
+@dataclass
+class SprayComponent:
+    """Компонент баковой смеси."""
+
+    name: str
+    rate: float
+    unit: str
+
+    def amount_unit(self) -> str:
+        """Единица измерения расчитанного количества компонента."""
+        units = {
+            "л/га": "л",
+            "мл/га": "мл",
+            "кг/га": "кг",
+            "г/га": "г",
+        }
+
+        return units[self.unit]
 
 
 def calculate_component_amount(
@@ -197,6 +221,69 @@ def calculate_remaining_area(
         return 0.0
 
     return remaining_area
+
+
+def calculate_tank_mix_for_area(
+    components: list[SprayComponent],
+    area_ha: float,
+) -> list[tuple[SprayComponent, float]]:
+    """
+    Рассчитать количество всех компонентов
+    баковой смеси для заданной площади.
+    """
+    result = []
+
+    for component in components:
+        amount = calculate_component_amount(
+            area_ha=area_ha,
+            rate=component.rate,
+        )
+
+        result.append((component, amount))
+
+    return result
+
+
+def calculate_tank_mix_for_full_tank(
+    components: list[SprayComponent],
+    tank_volume_l: float,
+    solution_rate_l_ha: float,
+) -> list[tuple[SprayComponent, float]]:
+    """Рассчитать баковую смесь на один полный бак."""
+
+    area_per_tank = calculate_area_per_tank(
+        tank_volume_l=tank_volume_l,
+        solution_rate_l_ha=solution_rate_l_ha,
+    )
+
+    return calculate_tank_mix_for_area(
+        components=components,
+        area_ha=area_per_tank,
+    )
+
+
+def calculate_tank_mix_for_last_tank(
+    components: list[SprayComponent],
+    area_ha: float,
+    tank_volume_l: float,
+    solution_rate_l_ha: float,
+) -> list[tuple[SprayComponent, float]]:
+    """Рассчитать баковую смесь для последней неполной заправки."""
+
+    remaining_area = calculate_remaining_area(
+        area_ha=area_ha,
+        tank_volume_l=tank_volume_l,
+        solution_rate_l_ha=solution_rate_l_ha,
+    )
+
+    if remaining_area == 0:
+        return []
+
+    return calculate_tank_mix_for_area(
+        components=components,
+        area_ha=remaining_area,
+    )
+
 
 
 '''
