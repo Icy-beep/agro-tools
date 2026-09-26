@@ -1,11 +1,11 @@
 from agro_tools.seeding import calculate_seed_rate
 from agro_tools.spraying import (
     calculate_area_per_tank,
+    calculate_last_tank,
     calculate_product_amount,
     calculate_product_per_tank,
+    calculate_solution_amount,
     calculate_tank_count,
-    calculate_water_amount,
-    calculate_last_tank,
 )
 
 
@@ -27,50 +27,51 @@ def spraying_menu():
     print("\n--- Расчёт опрыскивания ---")
 
     area_ha = float(input("Площадь поля, га: "))
-    product_rate_l_ha = float(input("Норма препарата, л/га: "))
-    water_rate_l_ha = float(input("Норма рабочего раствора, л/га: "))
+    product_rate = float(input("Норма препарата, л/га: "))
+    solution_rate_l_ha = float(input("Норма рабочего раствора, л/га: "))
     tank_volume_l = float(input("Объём бака, л: "))
 
     product_amount = calculate_product_amount(
         area_ha=area_ha,
-        product_rate_l_ha=product_rate_l_ha,
+        product_rate=product_rate,
     )
 
-    water_amount = calculate_water_amount(
+    solution_amount = calculate_solution_amount(
         area_ha=area_ha,
-        water_rate_l_ha=water_rate_l_ha,
+        solution_rate_l_ha=solution_rate_l_ha,
     )
 
     area_per_tank = calculate_area_per_tank(
         tank_volume_l=tank_volume_l,
-        water_rate_l_ha=water_rate_l_ha,
+        solution_rate_l_ha=solution_rate_l_ha,
     )
 
     product_per_tank = calculate_product_per_tank(
         tank_volume_l=tank_volume_l,
-        water_rate_l_ha=water_rate_l_ha,
-        product_rate_l_ha=product_rate_l_ha,
+        solution_rate_l_ha=solution_rate_l_ha,
+        product_rate=product_rate,
     )
 
     tank_count = calculate_tank_count(
         area_ha=area_ha,
         tank_volume_l=tank_volume_l,
-        water_rate_l_ha=water_rate_l_ha,
+        solution_rate_l_ha=solution_rate_l_ha,
     )
 
     remaining_area, last_tank_volume, last_tank_product = calculate_last_tank(
         area_ha=area_ha,
         tank_volume_l=tank_volume_l,
-        water_rate_l_ha=water_rate_l_ha,
-        product_rate_l_ha=product_rate_l_ha,
+        solution_rate_l_ha=solution_rate_l_ha,
+        product_rate=product_rate,
     )
 
     print("\n--- Результат ---")
     print(f"Препарата на всё поле: {product_amount:.2f} л")
-    print(f"Рабочего раствора: {water_amount:.0f} л")
+    print(f"Рабочего раствора: {solution_amount:.0f} л")
     print(f"Площадь на один полный бак: {area_per_tank:.2f} га")
     print(f"Препарата на полный бак: {product_per_tank:.2f} л")
     print(f"Количество заправок: {tank_count}")
+
     if remaining_area > 0:
         print("\nПоследняя неполная заправка:")
         print(f"Оставшаяся площадь: {remaining_area:.2f} га")
