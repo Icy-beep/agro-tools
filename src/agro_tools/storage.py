@@ -1,6 +1,9 @@
 import sqlite3
 from datetime import date
 from math import isfinite
+from pathlib import Path
+
+_ALL_SEASONS = object()
 
 
 class FieldStorage:
@@ -9,12 +12,35 @@ class FieldStorage:
 
         connection = self.connect()
         try:
+            old_operations = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='operations'"
+            ).fetchone()
+            if old_operations:
+                columns = {row["name"] for row in connection.execute("PRAGMA table_info(operations)")}
+                if "season_id" not in columns:
+                    backup_path = Path(self.database_path + ".before-seasons.bak")
+                    if backup_path.exists():
+                        raise ValueError("Резервная копия уже существует. Сохраните её отдельно перед обновлением базы.")
+                    backup = sqlite3.connect(str(backup_path))
+                    try:
+                        connection.backup(backup)
+                    finally:
+                        backup.close()
             with connection:
                 connection.executescript("""
                 CREATE TABLE IF NOT EXISTS fields (
                     id INTEGER PRIMARY KEY,
                     name TEXT NOT NULL,
                     area_ha REAL NOT NULL CHECK (area_ha > 0)
+                );
+
+                CREATE TABLE IF NOT EXISTS seasons (
+                    id INTEGER PRIMARY KEY,
+                    field_id INTEGER NOT NULL REFERENCES fields(id),
+                    harvest_year INTEGER NOT NULL CHECK (harvest_year BETWEEN 1900 AND 2200),
+                    crop TEXT NOT NULL,
+                    variety TEXT NOT NULL DEFAULT '',
+                    UNIQUE(field_id, harvest_year)
                 );
 
                 CREATE TABLE IF NOT EXISTS operations (
@@ -29,6 +55,14 @@ class FieldStorage:
                 CREATE INDEX IF NOT EXISTS operations_field_date
                 ON operations(field_id, operation_date);
             """)
+                columns = {row["name"] for row in connection.execute("PRAGMA table_info(operations)")}
+                if "season_id" not in columns:
+                    connection.execute(
+                        "ALTER TABLE operations ADD COLUMN season_id INTEGER REFERENCES seasons(id)"
+                    )
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS operations_season ON operations(season_id)"
+                )
         finally:
             connection.close()
 
@@ -79,7 +113,7 @@ class FieldStorage:
         finally:
             connection.close()
 
-    def add_operation(self, field_id, operation_date, operation_type, note=""):
+    def add_operation(self, field_id, operation_date, operation_type, note="", season_id=None):
         try:
             normalized_date = date.fromisoformat(operation_date).isoformat()
         except ValueError:
@@ -98,30 +132,79 @@ class FieldStorage:
                 if exists is None:
                     raise ValueError("Поле не найдено.")
 
+                if season_id is not None:
+                    season = connection.execute(
+                        "SELECT id FROM seasons WHERE id = ? AND field_id = ?",
+                        (season_id, field_id),
+                    ).fetchone()
+                    if season is None:
+                        raise ValueError("Сезон не принадлежит выбранному полю.")
+
                 cursor = connection.execute(
                     """
                     INSERT INTO operations
-                        (field_id, operation_date, operation_type, note)
-                    VALUES (?, ?, ?, ?)
+                        (field_id, operation_date, operation_type, note, season_id)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
-                    (field_id, normalized_date, operation_type, note.strip()),
+                    (field_id, normalized_date, operation_type, note.strip(), season_id),
                 )
                 return cursor.lastrowid
         finally:
             connection.close()
 
-    def list_operations(self, field_id):
+    def add_season(self, field_id, harvest_year, crop, variety=""):
+        try:
+            year = int(str(harvest_year).strip())
+        except (ValueError, TypeError):
+            raise ValueError("Введите год урожая целым числом.")
+        if not 1900 <= year <= 2200:
+            raise ValueError("Год урожая должен быть от 1900 до 2200.")
+        crop = crop.strip()
+        if not crop:
+            raise ValueError("Введите культуру.")
         connection = self.connect()
         try:
-            rows = connection.execute(
-                """
-                SELECT id, operation_date, operation_type, note
-                FROM operations
-                WHERE field_id = ?
-                ORDER BY operation_date DESC, id DESC
-                """,
+            with connection:
+                if connection.execute("SELECT id FROM fields WHERE id=?", (field_id,)).fetchone() is None:
+                    raise ValueError("Поле не найдено.")
+                try:
+                    cursor = connection.execute(
+                        "INSERT INTO seasons(field_id, harvest_year, crop, variety) VALUES (?, ?, ?, ?)",
+                        (field_id, year, crop, variety.strip()),
+                    )
+                except sqlite3.IntegrityError:
+                    raise ValueError("Для этого поля уже есть сезон с таким годом урожая.")
+                return cursor.lastrowid
+        finally:
+            connection.close()
+
+    def list_seasons(self, field_id):
+        connection = self.connect()
+        try:
+            return [dict(row) for row in connection.execute(
+                "SELECT id, field_id, harvest_year, crop, variety FROM seasons WHERE field_id=? ORDER BY harvest_year DESC",
                 (field_id,),
-            ).fetchall()
-            return [dict(row) for row in rows]
+            )]
+        finally:
+            connection.close()
+
+    def list_operations(self, field_id, season_id=_ALL_SEASONS):
+        # Без второго аргумента возвращаем всю историю, как в прежней версии.
+        query = """
+            SELECT o.id, o.operation_date, o.operation_type, o.note, o.season_id,
+                   s.harvest_year, s.crop, s.variety
+            FROM operations o LEFT JOIN seasons s ON s.id=o.season_id
+            WHERE o.field_id=?
+        """
+        parameters = [field_id]
+        if season_id is None:
+            query += " AND o.season_id IS NULL"
+        elif season_id is not _ALL_SEASONS:
+            query += " AND o.season_id=?"
+            parameters.append(season_id)
+        query += " ORDER BY o.operation_date DESC, o.id DESC"
+        connection = self.connect()
+        try:
+            return [dict(row) for row in connection.execute(query, parameters)]
         finally:
             connection.close()

@@ -152,6 +152,20 @@ class FieldCardScreen(JournalScreen):
         self.field_id = None
         self.heading = add_label(self.content, "", "24sp")
 
+        add_label(self.content, "Новый сезон", "22sp")
+        self.year_input = add_input(self.content, "Год урожая", str(date.today().year))
+        self.year_input.input_type = "number"
+        self.crop_input = add_input(self.content, "Культура")
+        self.variety_input = add_input(self.content, "Сорт / гибрид (необязательно)")
+        add_button(self.content, "Создать сезон", self.save_season)
+        self.season_message = add_label(self.content, "")
+
+        add_label(self.content, "Сезон для новой работы")
+        self.season_choices = {}
+        self.season_picker = Spinner(text="Без сезона", values=("Без сезона",),
+                                     size_hint_y=None, height=dp(48))
+        self.content.add_widget(self.season_picker)
+
         add_label(self.content, "Добавить выполненную работу")
         self.date_input = add_input(
             self.content, "Дата: ГГГГ-ММ-ДД", date.today().isoformat()
@@ -181,6 +195,10 @@ class FieldCardScreen(JournalScreen):
         self.message = add_label(self.content, "")
 
         add_label(self.content, "История работ", "22sp")
+        self.history_filter = Spinner(text="Все сезоны", values=("Все сезоны", "Без сезона"),
+                                      size_hint_y=None, height=dp(48))
+        self.content.add_widget(self.history_filter)
+        self.history_filter.bind(text=lambda *args: self.refresh_history())
         self.history = BoxLayout(
             orientation="vertical",
             spacing=dp(10),
@@ -196,6 +214,12 @@ class FieldCardScreen(JournalScreen):
         self.operation_type.text = "Посев"
         self.note_input.text = ""
         self.message.text = ""
+        self.season_message.text = ""
+        self.crop_input.text = ""
+        self.variety_input.text = ""
+        self.year_input.text = str(date.today().year)
+        self.season_picker.text = "Без сезона"
+        self.history_filter.text = "Все сезоны"
         self.refresh()
 
     def refresh(self):
@@ -208,8 +232,27 @@ class FieldCardScreen(JournalScreen):
         self.heading.text = (
             f"{field['name']}\nПлощадь: {field['area_ha']:g} га"
         )
+        self.season_choices = {
+            f"{s['harvest_year']} — {s['crop']}" + (f" ({s['variety']})" if s['variety'] else ""): s["id"]
+            for s in self.storage.list_seasons(self.field_id)
+        }
+        self.season_picker.values = ("Без сезона", *self.season_choices)
+        self.history_filter.values = ("Все сезоны", "Без сезона", *self.season_choices)
+        if self.season_picker.text not in self.season_picker.values:
+            self.season_picker.text = "Без сезона"
+        if self.history_filter.text not in self.history_filter.values:
+            self.history_filter.text = "Все сезоны"
+        self.refresh_history()
+
+    def refresh_history(self):
         self.history.clear_widgets()
-        operations = self.storage.list_operations(self.field_id)
+        selected = self.history_filter.text
+        if selected == "Все сезоны":
+            operations = self.storage.list_operations(self.field_id)
+        else:
+            operations = self.storage.list_operations(
+                self.field_id, season_id=self.season_choices.get(selected)
+            )
 
         if not operations:
             add_label(self.history, "Работы ещё не добавлены.")
@@ -219,6 +262,11 @@ class FieldCardScreen(JournalScreen):
                 f"{operation['operation_date']} — "
                 f"{operation['operation_type']}"
             )
+            season_label = (
+                f"Урожай {operation['harvest_year']} — {operation['crop']}"
+                if operation["season_id"] is not None else "Без сезона"
+            )
+            text += f"\n{season_label}"
             if operation["note"]:
                 text += f"\n{operation['note']}"
             add_label(self.history, text)
@@ -230,6 +278,7 @@ class FieldCardScreen(JournalScreen):
                 self.date_input.text.strip(),
                 self.operation_type.text,
                 self.note_input.text,
+                season_id=self.season_choices.get(self.season_picker.text),
             )
         except ValueError as error:
             self.message.text = str(error)
@@ -238,6 +287,23 @@ class FieldCardScreen(JournalScreen):
         self.note_input.text = ""
         self.message.text = "Работа сохранена."
         self.refresh()
+
+    def save_season(self, _button):
+        try:
+            season_id = self.storage.add_season(
+                self.field_id, self.year_input.text,
+                self.crop_input.text, self.variety_input.text,
+            )
+        except ValueError as error:
+            self.season_message.text = str(error)
+            return
+        self.refresh()
+        label = next(label for label, value in self.season_choices.items() if value == season_id)
+        self.season_picker.text = label
+        self.history_filter.text = label
+        self.crop_input.text = ""
+        self.variety_input.text = ""
+        self.season_message.text = "Сезон создан и выбран для новых работ."
 
     def go_fields(self, _button):
         self.manager.current = "fields"

@@ -122,6 +122,7 @@ uploads/
 bin/
 *.apk
 *.aab
+*.db.before-seasons.bak
 
 # SQLite: служебные файлы
 *.db-wal
