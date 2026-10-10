@@ -18,5 +18,12 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "buildozer",
+    "cython==0.29.34",
+    "legacy-cgi>=2.6.4",
     "pytest>=9.1.1",
+    "setuptools>=84.0.0",
 ]
+
+[tool.uv.sources]
+buildozer = { git = "https://github.com/kivy/buildozer", rev = "a153097b3c534bea8a17da2abf1369d67c8cbfcb" }
