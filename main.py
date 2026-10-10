@@ -136,6 +136,8 @@ class FieldSprayingScreen(CalculatorScreen):
 
         self.selected_field_id = None
         self.field_choices = {}
+        self.season_choices = {}
+        self.selected_season_id = None
         self.saved_calculation = None
 
         # Получаем существующий вертикальный контейнер.
@@ -152,6 +154,15 @@ class FieldSprayingScreen(CalculatorScreen):
             self.field_picker,
             index=len(layout.children) - 1,
         )
+        self.season_picker = Spinner(
+            text="Без сезона",
+            values=("Без сезона",),
+            disabled=True,
+            size_hint_y=None,
+            height=dp(56),
+        )
+        layout.add_widget(self.season_picker, index=len(layout.children) - 2)
+        self.season_picker.bind(text=self.select_season)
         self.field_picker.bind(text=self.select_field)
 
         self.save_button = Button(
@@ -200,6 +211,7 @@ class FieldSprayingScreen(CalculatorScreen):
         if self.field_picker.text not in self.field_picker.values:
             self.field_picker.text = "Без привязки к полю"
 
+        self.refresh_seasons()
         self.invalidate_calculation()
 
     def select_field(self, _spinner, text):
@@ -209,6 +221,26 @@ class FieldSprayingScreen(CalculatorScreen):
         if field:
             self.inputs["area"].text = str(field["area_ha"])
 
+        self.refresh_seasons(reset=True)
+        self.invalidate_calculation()
+
+    def refresh_seasons(self, reset=False):
+        field = self.field_choices.get(self.field_picker.text)
+        self.selected_field_id = field["id"] if field else None
+        seasons = self.storage.list_seasons(self.selected_field_id) if field else []
+        self.season_choices = {
+            f"Урожай {season['harvest_year']} — {season['crop']}"
+            + (f" ({season['variety']})" if season['variety'] else ""): season["id"]
+            for season in seasons
+        }
+        self.season_picker.values = ("Без сезона", *self.season_choices)
+        self.season_picker.disabled = not bool(field)
+        if reset or self.season_picker.text not in self.season_picker.values:
+            self.season_picker.text = "Без сезона"
+        self.selected_season_id = self.season_choices.get(self.season_picker.text)
+
+    def select_season(self, _spinner, text):
+        self.selected_season_id = self.season_choices.get(text)
         self.invalidate_calculation()
 
     def invalidate_calculation(self, *args):
@@ -256,14 +288,17 @@ class FieldSprayingScreen(CalculatorScreen):
             f"{result}"
         )
 
-        self.saved_calculation = (self.selected_field_id, note)
+        note = f"Сезон: {self.season_picker.text}\n" + note
+        self.saved_calculation = (
+            self.selected_field_id, self.selected_season_id, note
+        )
         self.save_button.disabled = False
 
     def save_calculation(self, _button):
         if self.saved_calculation is None:
             return
 
-        field_id, note = self.saved_calculation
+        field_id, season_id, note = self.saved_calculation
 
         try:
             self.storage.add_operation(
@@ -271,6 +306,7 @@ class FieldSprayingScreen(CalculatorScreen):
                 operation_date=date.today().isoformat(),
                 operation_type="Расчёт опрыскивания",
                 note=note,
+                season_id=season_id,
             )
         except ValueError as error:
             self.save_message.text = str(error)
