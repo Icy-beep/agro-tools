@@ -116,3 +116,14 @@ data/
 
 # Пользовательские фото/вложения
 uploads/
+
+# Android / Buildozer
+.buildozer/
+bin/
+*.apk
+*.aab
+
+# SQLite: служебные файлы
+*.db-wal
+*.db-shm
+*.db-journal
