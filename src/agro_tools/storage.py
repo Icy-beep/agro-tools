@@ -113,6 +113,80 @@ class FieldStorage:
         finally:
             connection.close()
 
+    def update_field(self, field_id, name, area_ha):
+        """Изменить карточку, сохранив ID, сезоны и историю поля."""
+        name = name.strip()
+        if not name:
+            raise ValueError("Введите название поля.")
+        try:
+            area_ha = float(area_ha)
+        except (ValueError, TypeError):
+            raise ValueError("Введите площадь числом.") from None
+        if not isfinite(area_ha) or area_ha <= 0:
+            raise ValueError("Площадь должна быть больше нуля.")
+
+        connection = self.connect()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    "UPDATE fields SET name=?, area_ha=? WHERE id=?",
+                    (name, area_ha, field_id),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("Поле не найдено.")
+        finally:
+            connection.close()
+
+    def get_operation(self, field_id, operation_id):
+        """Получить запись только из истории указанного поля."""
+        connection = self.connect()
+        try:
+            row = connection.execute(
+                """SELECT id, field_id, operation_date, operation_type, note, season_id
+                   FROM operations WHERE id=? AND field_id=?""",
+                (operation_id, field_id),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            connection.close()
+
+    def update_operation(
+        self, field_id, operation_id, operation_date, operation_type,
+        note="", season_id=None,
+    ):
+        """Обновить запись на месте, включая привязку к сезону."""
+        try:
+            normalized_date = date.fromisoformat(operation_date).isoformat()
+            if normalized_date != operation_date:
+                raise ValueError
+        except (ValueError, TypeError):
+            raise ValueError("Дата должна быть в формате ГГГГ-ММ-ДД.") from None
+        operation_type = operation_type.strip()
+        if not operation_type:
+            raise ValueError("Выберите тип работы.")
+
+        connection = self.connect()
+        try:
+            with connection:
+                if season_id is not None:
+                    season = connection.execute(
+                        "SELECT id FROM seasons WHERE id=? AND field_id=?",
+                        (season_id, field_id),
+                    ).fetchone()
+                    if season is None:
+                        raise ValueError("Сезон не принадлежит выбранному полю.")
+                cursor = connection.execute(
+                    """UPDATE operations
+                       SET operation_date=?, operation_type=?, note=?, season_id=?
+                       WHERE id=? AND field_id=?""",
+                    (normalized_date, operation_type, note.strip(), season_id,
+                     operation_id, field_id),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("Запись не найдена в истории этого поля.")
+        finally:
+            connection.close()
+
     def add_operation(self, field_id, operation_date, operation_type, note="", season_id=None):
         try:
             normalized_date = date.fromisoformat(operation_date).isoformat()
