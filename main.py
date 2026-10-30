@@ -38,7 +38,7 @@ class CalculatorScreen(Screen):
         scroll = ScrollView()
         layout = BoxLayout(
             orientation="vertical",
-            padding=dp(16),
+            padding=[dp(16), dp(16), dp(16), dp(64)],
             spacing=dp(10),
             size_hint_y=None,
         )
