@@ -1,10 +1,12 @@
 from datetime import date
+import sqlite3
 
 from kivy.app import App
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import Screen
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.spinner import Spinner
@@ -49,6 +51,51 @@ def add_input(layout, caption, text="", multiline=False):
     )
     layout.add_widget(entry)
     return entry
+
+
+class EditPopup(Popup):
+    """Прокручиваемая форма: изменения пишутся только кнопкой сохранения."""
+
+    def __init__(self, **kwargs):
+        super().__init__(size_hint=(0.95, 0.9), **kwargs)
+        scroll = ScrollView()
+        self.form = BoxLayout(
+            orientation="vertical", spacing=dp(10),
+            padding=[dp(16), dp(16), dp(16), dp(64)], size_hint_y=None,
+        )
+        self.form.bind(minimum_height=self.form.setter("height"))
+        scroll.add_widget(self.form)
+        self.content = scroll
+
+    def add_actions(self, save_callback):
+        self.error = add_label(self.form, "")
+        add_button(self.form, "Сохранить изменения", save_callback)
+        add_button(self.form, "Отмена", lambda _button: self.dismiss())
+
+
+class FieldEditPopup(EditPopup):
+    def __init__(self, storage, field, on_saved, **kwargs):
+        super().__init__(title="Редактирование поля", **kwargs)
+        self.storage = storage
+        self.field_id = field["id"]
+        self.on_saved = on_saved
+        self.name_input = add_input(self.form, "Название поля", field["name"])
+        self.area_input = add_input(self.form, "Площадь, га", str(field["area_ha"]))
+        self.area_input.input_type = "number"
+        self.add_actions(self.save)
+
+    def save(self, _button):
+        try:
+            area = self.area_input.text.strip().replace(",", ".")
+            self.storage.update_field(self.field_id, self.name_input.text, area)
+        except ValueError as error:
+            self.error.text = str(error)
+            return
+        except sqlite3.Error:
+            self.error.text = "Не удалось сохранить поле. Повторите попытку."
+            return
+        self.dismiss()
+        self.on_saved()
 
 
 class JournalScreen(Screen):
@@ -151,6 +198,8 @@ class FieldCardScreen(JournalScreen):
         super().__init__(**kwargs)
         self.field_id = None
         self.heading = add_label(self.content, "", "24sp")
+        add_button(self.content, "Редактировать поле", self.edit_field)
+        self.field_message = add_label(self.content, "")
 
         add_label(self.content, "Новый сезон", "22sp")
         self.year_input = add_input(self.content, "Год урожая", str(date.today().year))
@@ -210,6 +259,7 @@ class FieldCardScreen(JournalScreen):
         add_button(self.content, "К списку полей", self.go_fields)
 
     def on_pre_enter(self, *args):
+        self.field_message.text = ""
         self.date_input.text = date.today().isoformat()
         self.operation_type.text = "Посев"
         self.note_input.text = ""
@@ -220,6 +270,17 @@ class FieldCardScreen(JournalScreen):
         self.year_input.text = str(date.today().year)
         self.season_picker.text = "Без сезона"
         self.history_filter.text = "Все сезоны"
+        self.refresh()
+
+    def edit_field(self, _button):
+        field = self.storage.get_field(self.field_id)
+        if field is None:
+            self.field_message.text = "Поле не найдено."
+            return
+        FieldEditPopup(self.storage, field, self.field_saved).open()
+
+    def field_saved(self):
+        self.field_message.text = "Изменения поля сохранены."
         self.refresh()
 
     def refresh(self):
