@@ -98,6 +98,63 @@ class FieldEditPopup(EditPopup):
         self.on_saved()
 
 
+class OperationEditPopup(EditPopup):
+    def __init__(self, storage, operation, on_saved, **kwargs):
+        super().__init__(title="Редактирование записи", **kwargs)
+        self.storage = storage
+        self.field_id = operation["field_id"]
+        self.operation_id = operation["id"]
+        self.on_saved = on_saved
+        self.date_input = add_input(
+            self.form, "Дата: ГГГГ-ММ-ДД", operation["operation_date"]
+        )
+        add_label(self.form, "Тип работы")
+        kinds = (
+            "Посев", "Опрыскивание", "Внесение удобрений", "Обследование",
+            "Обработка почвы", "Уборка", "Другая работа", "Расчёт опрыскивания",
+        )
+        # Не заменяем неизвестный старый тип на первый пункт списка.
+        self.operation_type = Spinner(
+            text=operation["operation_type"],
+            values=tuple(dict.fromkeys((*kinds, operation["operation_type"]))),
+            size_hint_y=None, height=dp(48),
+        )
+        self.form.add_widget(self.operation_type)
+        add_label(self.form, "Сезон записи")
+        self.season_choices = {
+            f"{s['harvest_year']} — {s['crop']}"
+            + (f" ({s['variety']})" if s["variety"] else ""): s["id"]
+            for s in storage.list_seasons(self.field_id)
+        }
+        selected = next(
+            (label for label, season_id in self.season_choices.items()
+             if season_id == operation["season_id"]), "Без сезона"
+        )
+        self.season_picker = Spinner(
+            text=selected, values=("Без сезона", *self.season_choices),
+            size_hint_y=None, height=dp(48),
+        )
+        self.form.add_widget(self.season_picker)
+        self.note_input = add_input(self.form, "Заметка", operation["note"], multiline=True)
+        self.add_actions(self.save)
+
+    def save(self, _button):
+        season_id = self.season_choices.get(self.season_picker.text)
+        try:
+            self.storage.update_operation(
+                self.field_id, self.operation_id, self.date_input.text.strip(),
+                self.operation_type.text, self.note_input.text, season_id=season_id,
+            )
+        except ValueError as error:
+            self.error.text = str(error)
+            return
+        except sqlite3.Error:
+            self.error.text = "Не удалось сохранить запись. Повторите попытку."
+            return
+        self.dismiss()
+        self.on_saved(season_id)
+
+
 class JournalScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -331,6 +388,28 @@ class FieldCardScreen(JournalScreen):
             if operation["note"]:
                 text += f"\n{operation['note']}"
             add_label(self.history, text)
+            add_button(
+                self.history, "Редактировать запись",
+                lambda _button, operation_id=operation["id"]:
+                self.edit_operation(operation_id),
+            )
+
+    def edit_operation(self, operation_id):
+        operation = self.storage.get_operation(self.field_id, operation_id)
+        if operation is None:
+            self.message.text = "Запись не найдена в истории этого поля."
+            return
+        OperationEditPopup(self.storage, operation, self.operation_saved).open()
+
+    def operation_saved(self, season_id):
+        # После переноса запись остаётся видна, даже если был включён фильтр.
+        if self.history_filter.text != "Все сезоны":
+            self.history_filter.text = next(
+                (label for label, value in self.season_choices.items() if value == season_id),
+                "Без сезона",
+            )
+        self.message.text = "Изменения записи сохранены."
+        self.refresh_history()
 
     def save_operation(self, _button):
         try:

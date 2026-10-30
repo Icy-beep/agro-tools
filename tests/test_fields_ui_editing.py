@@ -12,7 +12,9 @@ except ImportError:
     App = None
 
 if App is not None:
-    from agro_tools.fields_ui import FieldEditPopup, FieldCardScreen, FieldsScreen
+    from agro_tools.fields_ui import (
+        FieldEditPopup, OperationEditPopup, FieldCardScreen, FieldsScreen,
+    )
     from agro_tools.storage import FieldStorage
     from kivy.uix.screenmanager import ScreenManager
 
@@ -57,6 +59,83 @@ class FieldEditingUITests(unittest.TestCase):
         editor.name_input.text = "Не сохранять"
         editor.dismiss()
         self.assertEqual(self.storage.get_field(self.field)["name"], "Первое")
+
+    def operation_editor(self, kind="Посев", season_id=None):
+        self.operation = self.storage.add_operation(
+            self.field, "2026-09-12", kind, "Старая заметка", season_id
+        )
+        return OperationEditPopup(
+            self.storage, self.storage.get_operation(self.field, self.operation),
+            self.card.operation_saved,
+        )
+
+    def test_edit_operation_prefills_and_saves_all_values(self):
+        season = self.storage.add_season(self.field, 2027, "Пшеница")
+        self.card.refresh()
+        editor = self.operation_editor()
+        self.assertEqual(editor.date_input.text, "2026-09-12")
+        self.assertEqual(editor.note_input.text, "Старая заметка")
+        editor.date_input.text = "2027-04-05"
+        editor.operation_type.text = "Обследование"
+        editor.note_input.text = "Новая заметка\nВторая строка"
+        editor.season_picker.text = next(iter(editor.season_choices))
+        editor.save(None)
+        record = self.storage.get_operation(self.field, self.operation)
+        self.assertEqual(record["operation_date"], "2027-04-05")
+        self.assertEqual(record["operation_type"], "Обследование")
+        self.assertEqual(record["note"], "Новая заметка\nВторая строка")
+        self.assertEqual(record["season_id"], season)
+        self.assertEqual(len(self.storage.list_operations(self.field)), 1)
+
+    def test_invalid_date_leaves_editor_and_record_intact(self):
+        editor = self.operation_editor()
+        editor.date_input.text = "2026-02-30"
+        editor.note_input.text = "Черновик"
+        editor.save(None)
+        self.assertTrue(editor.error.text)
+        self.assertEqual(editor.note_input.text, "Черновик")
+        self.assertEqual(self.storage.get_operation(self.field, self.operation)["note"], "Старая заметка")
+
+    def test_cancel_operation_does_not_save(self):
+        editor = self.operation_editor()
+        editor.note_input.text = "Не сохранять"
+        editor.dismiss()
+        self.assertEqual(self.storage.get_operation(self.field, self.operation)["note"], "Старая заметка")
+
+    def test_preserves_unknown_and_calculation_types(self):
+        for kind in ("Расчёт опрыскивания", "Старая нестандартная работа"):
+            editor = self.operation_editor(kind)
+            self.assertEqual(editor.operation_type.text, kind)
+            self.assertIn(kind, editor.operation_type.values)
+            editor.save(None)
+            self.assertEqual(self.storage.get_operation(self.field, self.operation)["operation_type"], kind)
+
+    def test_seasons_are_limited_to_current_field(self):
+        own = self.storage.add_season(self.field, 2027, "Пшеница")
+        other = self.storage.add_field("Другое", 10)
+        self.storage.add_season(other, 2028, "Рожь")
+        editor = self.operation_editor()
+        self.assertEqual(set(editor.season_choices.values()), {own})
+
+    def test_moving_record_updates_active_filter_and_history(self):
+        old = self.storage.add_season(self.field, 2026, "Пшеница")
+        new = self.storage.add_season(self.field, 2027, "Ячмень")
+        self.card.refresh()
+        old_label = next(k for k, v in self.card.season_choices.items() if v == old)
+        new_label = next(k for k, v in self.card.season_choices.items() if v == new)
+        self.card.history_filter.text = old_label
+        editor = self.operation_editor(season_id=old)
+        editor.season_picker.text = new_label
+        editor.save(None)
+        self.assertEqual(self.card.history_filter.text, new_label)
+        self.assertTrue(any("Старая заметка" in getattr(c, "text", "") for c in self.card.history.children))
+        editor = OperationEditPopup(
+            self.storage, self.storage.get_operation(self.field, self.operation), self.card.operation_saved,
+        )
+        editor.season_picker.text = "Без сезона"
+        editor.save(None)
+        self.assertEqual(self.card.history_filter.text, "Без сезона")
+        self.assertIsNone(self.storage.get_operation(self.field, self.operation)["season_id"])
 
 
 if __name__ == "__main__":
